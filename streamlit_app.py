@@ -1,12 +1,6 @@
 import streamlit as st
 import sqlite3
-import sys
-import os
-
-# Ensure Python can find movie_recommender.py
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from movie_recommender import (
+from recommender import (
     initialize_database,
     get_user_ratings,
     content_based_recommendations,
@@ -61,6 +55,14 @@ menu = st.sidebar.radio(
 # Home Page
 if menu == "Home":
     st.header("Welcome to the Movie Recommendation System!")
+    try:
+        st.image(
+            "https://source.unsplash.com/800x400/?cinema,movie",
+            caption="Explore movies and find your next favorite!",
+            use_container_width=True,
+        )
+    except Exception:
+        st.warning("Image could not be loaded. Please check the URL or your internet connection.")
     st.markdown(
         """
         ### Features:
