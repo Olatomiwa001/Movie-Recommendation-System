@@ -1,5 +1,11 @@
 import streamlit as st
 import sqlite3
+import sys
+import os
+
+# Ensure Python can find movie_recommender.py
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from movie_recommender import (
     initialize_database,
     get_user_ratings,
