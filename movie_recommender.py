@@ -11,104 +11,20 @@ import os
 import datetime
 import csv
 from io import StringIO
+import sys
+sys.path.append('c:/Users/User/Desktop/Movie Recommendation System')
+from movie_recommender import (
+    initialize_database,
+    get_user_ratings,
+    content_based_recommendations,
+    collaborative_filtering_recommendations,
+    hybrid_recommendations,
+    add_movie,
+    add_user,
+)
+
 
 # Database Management
-def initialize_database():
-    """Create and initialize the SQLite database with tables and sample data"""
-    conn = sqlite3.connect('movie_recommendations.db')
-    cursor = conn.cursor()
-    
-    # Create tables
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS movies (
-        movie_id INTEGER PRIMARY KEY,
-        title TEXT NOT NULL,
-        genre TEXT NOT NULL,
-        year INTEGER,
-        poster_url TEXT,
-        popularity FLOAT DEFAULT 0
-    )
-    ''')
-    
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS ratings (
-        rating_id INTEGER PRIMARY KEY,
-        user_id INTEGER NOT NULL,
-        movie_id INTEGER NOT NULL,
-        rating FLOAT NOT NULL,
-        timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (movie_id) REFERENCES movies (movie_id)
-    )
-    ''')
-    
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY,
-        username TEXT NOT NULL,
-        date_joined TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-    ''')
-    
-    # Insert sample data only if tables are empty
-    cursor.execute("SELECT COUNT(*) FROM movies")
-    if cursor.fetchone()[0] == 0:
-        sample_movies = [
-            (1, 'The Shawshank Redemption', 'Drama', 1994, '', 9.3),
-            (2, 'The Godfather', 'Crime, Drama', 1972, '', 9.2),
-            (3, 'The Dark Knight', 'Action, Crime, Drama', 2008, '', 9.0),
-            (4, 'Pulp Fiction', 'Crime, Drama', 1994, '', 8.9),
-            (5, 'The Lord of the Rings: The Fellowship of the Ring', 'Adventure, Fantasy', 2001, '', 8.8),
-            (6, 'The Matrix', 'Action, Sci-Fi', 1999, '', 8.7),
-            (7, 'Star Wars: Episode IV - A New Hope', 'Action, Adventure, Fantasy', 1977, '', 8.6),
-            (8, 'Inception', 'Action, Adventure, Sci-Fi', 2010, '', 8.8),
-            (9, 'Forrest Gump', 'Drama, Romance', 1994, '', 8.8),
-            (10, 'The Silence of the Lambs', 'Crime, Drama, Thriller', 1991, '', 8.6),
-            (11, 'Interstellar', 'Adventure, Drama, Sci-Fi', 2014, '', 8.6),
-            (12, 'The Departed', 'Crime, Drama, Thriller', 2006, '', 8.5),
-            (13, 'The Green Mile', 'Crime, Drama, Fantasy', 1999, '', 8.6),
-            (14, 'Gladiator', 'Action, Adventure, Drama', 2000, '', 8.5),
-            (15, 'The Prestige', 'Drama, Mystery, Sci-Fi', 2006, '', 8.5)
-        ]
-        
-        sample_users = [
-            (1, 'user1'),
-            (2, 'user2'),
-            (3, 'user3'),
-            (4, 'user4'),
-            (5, 'user5'),
-            (6, 'YourUsername')
-        ]
-        
-        sample_ratings = [
-            (1, 1, 1, 5.0),
-            (2, 1, 2, 4.5),
-            (3, 1, 3, 4.0),
-            (4, 2, 1, 4.0),
-            (5, 2, 4, 5.0),
-            (6, 2, 5, 4.5),
-            (7, 3, 6, 5.0),
-            (8, 3, 7, 4.5),
-            (9, 3, 8, 5.0),
-            (10, 4, 3, 4.5),
-            (11, 4, 6, 4.0),
-            (12, 4, 8, 5.0),
-            (13, 5, 1, 3.5),
-            (14, 5, 9, 4.5),
-            (15, 5, 10, 4.0),
-            (16, 1, 11, 4.8),
-            (17, 2, 12, 4.2),
-            (18, 3, 13, 4.6),
-            (19, 4, 14, 3.9),
-            (20, 5, 15, 4.3)
-        ]
-        
-        cursor.executemany('INSERT INTO movies (movie_id, title, genre, year, poster_url, popularity) VALUES (?, ?, ?, ?, ?, ?)', sample_movies)
-        cursor.executemany('INSERT INTO users (user_id, username) VALUES (?, ?)', sample_users)
-        cursor.executemany('INSERT INTO ratings (rating_id, user_id, movie_id, rating) VALUES (?, ?, ?, ?)', sample_ratings)
-        
-    conn.commit()
-    return conn
-
 def backup_database():
     """Create a backup of the database"""
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -191,17 +107,6 @@ def get_all_ratings(conn):
     query = "SELECT * FROM ratings"
     return pd.read_sql_query(query, conn)
 
-def get_user_ratings(conn, user_id):
-    """Get ratings for a specific user"""
-    query = f"""
-    SELECT r.rating_id, r.user_id, m.movie_id, m.title, r.rating, m.genre
-    FROM ratings r
-    JOIN movies m ON r.movie_id = m.movie_id
-    WHERE r.user_id = {user_id}
-    ORDER BY r.rating DESC
-    """
-    return pd.read_sql_query(query, conn)
-
 def search_movies(conn, term):
     """Search for movies by title or genre"""
     query = f"""
@@ -210,179 +115,6 @@ def search_movies(conn, term):
     ORDER BY popularity DESC
     """
     return pd.read_sql_query(query, conn)
-
-# Recommendation Algorithms
-def content_based_recommendations(conn, movie_title):
-    """Recommend movies based on content similarity (genres)"""
-    # Get all movies
-    movies_df = get_all_movies(conn)
-    
-    # Check if movie exists
-    if not any(movies_df['title'] == movie_title):
-        print(f"Movie '{movie_title}' not found in database.")
-        return []
-    
-    # Create a simple feature matrix based on genres
-    # First, get all unique genres
-    all_genres = set()
-    for genres in movies_df['genre'].str.split(', '):
-        all_genres.update(genres)
-    
-    # Create a genre matrix
-    genre_matrix = np.zeros((len(movies_df), len(all_genres)))
-    for i, genres in enumerate(movies_df['genre'].str.split(', ')):
-        for genre in genres:
-            genre_matrix[i, list(all_genres).index(genre)] = 1
-    
-    # Calculate similarity
-    similarity = cosine_similarity(genre_matrix)
-    
-    # Find the movie index
-    movie_idx = movies_df[movies_df['title'] == movie_title].index[0]
-    
-    # Get similarity scores
-    similarity_scores = list(enumerate(similarity[movie_idx]))
-    similarity_scores = sorted(similarity_scores, key=lambda x: x[1], reverse=True)
-    
-    # Get the top 5 most similar movies (excluding the movie itself)
-    similar_movies = similarity_scores[1:6]
-    
-    # Return the recommendations
-    recommendations = []
-    for i, score in similar_movies:
-        movie = movies_df.iloc[i]
-        recommendations.append({
-            'movie_id': movie['movie_id'],
-            'title': movie['title'],
-            'genre': movie['genre'],
-            'year': movie['year'],
-            'similarity_score': score
-        })
-    
-    return recommendations
-
-def collaborative_filtering_recommendations(conn, user_id):
-    """Recommend movies based on user similarity"""
-    # Get all ratings
-    ratings_df = get_all_ratings(conn)
-    movies_df = get_all_movies(conn)
-    
-    # Check if user exists
-    if user_id not in ratings_df['user_id'].unique():
-        print(f"User {user_id} has no ratings. Cannot generate recommendations.")
-        return []
-    
-    # Create a user-item matrix
-    user_item_matrix = ratings_df.pivot_table(index='user_id', columns='movie_id', values='rating')
-    user_item_matrix = user_item_matrix.fillna(0)
-    
-    # If fewer than 2 users, can't do collaborative filtering
-    if len(user_item_matrix) < 2:
-        print("Not enough users for collaborative filtering.")
-        return []
-    
-    # Calculate user similarity (cosine similarity)
-    user_similarity = cosine_similarity(user_item_matrix)
-    
-    # Get user index
-    user_idx = np.where(user_item_matrix.index == user_id)[0][0]
-    
-    # Get user similarities
-    user_similarities = list(enumerate(user_similarity[user_idx]))
-    
-    # Sort by similarity (excluding the user itself)
-    similar_users = sorted(user_similarities, key=lambda x: x[1], reverse=True)[1:4]
-    
-    # If no similar users found
-    if not similar_users:
-        print("No similar users found.")
-        return []
-    
-    # Get movies that the user hasn't rated
-    user_rated_movies = set(ratings_df[ratings_df['user_id'] == user_id]['movie_id'])
-    all_movies = set(movies_df['movie_id'])
-    unrated_movies = all_movies - user_rated_movies
-    
-    # Calculate predicted ratings for unrated movies
-    predictions = []
-    for movie_id in unrated_movies:
-        weighted_sum = 0
-        similarity_sum = 0
-        
-        for idx, similarity in similar_users:
-            similar_user_id = user_item_matrix.index[idx]
-            
-            # If the similar user has rated this movie
-            if movie_id in user_item_matrix.columns:
-                rating = user_item_matrix.loc[similar_user_id, movie_id]
-                if rating > 0:
-                    weighted_sum += similarity * rating
-                    similarity_sum += similarity
-        
-        # If we have a prediction
-        if similarity_sum > 0:
-            predicted_rating = weighted_sum / similarity_sum
-            movie_info = movies_df[movies_df['movie_id'] == movie_id].iloc[0]
-            predictions.append({
-                'movie_id': movie_id,
-                'title': movie_info['title'],
-                'genre': movie_info['genre'],
-                'year': movie_info['year'],
-                'predicted_rating': predicted_rating
-            })
-    
-    # Sort by predicted rating and return top 5
-    return sorted(predictions, key=lambda x: x['predicted_rating'], reverse=True)[:5]
-
-def hybrid_recommendations(conn, user_id, movie_title=None):
-    """Combine content-based and collaborative filtering for better recommendations"""
-    collab_recs = collaborative_filtering_recommendations(conn, user_id)
-    
-    # If no movie title provided, use the user's highest rated movie
-    if movie_title is None:
-        user_ratings = get_user_ratings(conn, user_id)
-        if len(user_ratings) > 0:
-            top_movie = user_ratings.iloc[0]['title']
-            content_recs = content_based_recommendations(conn, top_movie)
-        else:
-            # If user has no ratings, use a popular movie
-            movies_df = get_all_movies(conn)
-            top_movie = movies_df.iloc[0]['title']
-            content_recs = content_based_recommendations(conn, top_movie)
-    else:
-        content_recs = content_based_recommendations(conn, movie_title)
-    
-    # Combine recommendations
-    hybrid_recs = []
-    seen_movies = set()
-    
-    # First add collaborative filtering recommendations
-    for rec in collab_recs:
-        hybrid_recs.append({
-            'movie_id': rec['movie_id'],
-            'title': rec['title'],
-            'genre': rec['genre'],
-            'year': rec.get('year', 'Unknown'),
-            'score': rec['predicted_rating'],
-            'source': 'Collaborative'
-        })
-        seen_movies.add(rec['movie_id'])
-    
-    # Then add content recommendations that aren't duplicates
-    for rec in content_recs:
-        if rec['movie_id'] not in seen_movies:
-            hybrid_recs.append({
-                'movie_id': rec['movie_id'],
-                'title': rec['title'],
-                'genre': rec['genre'],
-                'year': rec.get('year', 'Unknown'),
-                'score': rec['similarity_score'],
-                'source': 'Content-based'
-            })
-            seen_movies.add(rec['movie_id'])
-    
-    # Sort by score and return top 8
-    return sorted(hybrid_recs, key=lambda x: x['score'], reverse=True)[:8]
 
 # Data Management Functions
 def add_user_rating(conn, user_id, movie_id, rating):
@@ -415,56 +147,6 @@ def add_user_rating(conn, user_id, movie_id, rating):
     
     conn.commit()
     return True
-
-def add_movie(conn, title, genre, year=None, poster_url='', popularity=0):
-    """Add a new movie to the database"""
-    cursor = conn.cursor()
-    
-    # Check if movie already exists
-    cursor.execute('''
-    SELECT movie_id FROM movies
-    WHERE title = ?
-    ''', (title,))
-    
-    existing = cursor.fetchone()
-    
-    if existing:
-        print(f"Movie '{title}' already exists with ID {existing[0]}")
-        return existing[0]
-    
-    cursor.execute('''
-    INSERT INTO movies (title, genre, year, poster_url, popularity)
-    VALUES (?, ?, ?, ?, ?)
-    ''', (title, genre, year, poster_url, popularity))
-    
-    conn.commit()
-    print(f"Added movie '{title}' with ID {cursor.lastrowid}")
-    return cursor.lastrowid
-
-def add_user(conn, username):
-    """Add a new user to the database"""
-    cursor = conn.cursor()
-    
-    # Check if username already exists
-    cursor.execute('''
-    SELECT user_id FROM users
-    WHERE username = ?
-    ''', (username,))
-    
-    existing = cursor.fetchone()
-    
-    if existing:
-        print(f"Username '{username}' already exists with ID {existing[0]}")
-        return existing[0]
-    
-    cursor.execute('''
-    INSERT INTO users (username)
-    VALUES (?)
-    ''', (username,))
-    
-    conn.commit()
-    print(f"Added user '{username}' with ID {cursor.lastrowid}")
-    return cursor.lastrowid
 
 def delete_movie(conn, movie_id):
     """Delete a movie and its ratings from the database"""
