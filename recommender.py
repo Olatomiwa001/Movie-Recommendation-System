@@ -12,7 +12,12 @@ import datetime
 import csv
 from io import StringIO
 import logging
-
+try:
+    from tabulate import tabulate
+except ImportError:
+    # Define a simple fallback if tabulate is not available
+    def tabulate(data, *args, **kwargs):
+        return str(data)
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
